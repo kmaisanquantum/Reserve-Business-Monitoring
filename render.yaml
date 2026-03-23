@@ -21,12 +21,11 @@ services:
     plan: free
 
   # ── React Frontend (Static Site) ──────────────────────────────────────────
-  - type: web
+  - type: static
     name: png-monitor-web
-    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: ./build
+    publishPath: build
     envVars:
       - key: REACT_APP_API_URL
         fromService:
