@@ -13,8 +13,21 @@ _db: AsyncIOMotorDatabase | None = None
 async def init_db() -> None:
     global _client, _db
     settings = get_settings()
-    _client = AsyncIOMotorClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
+
+    # Use certifi for SSL certificates if available
+    client_kwargs = {
+        "serverSelectionTimeoutMS": 5000,
+    }
+
+    try:
+        import certifi
+        client_kwargs["tlsCAFile"] = certifi.where()
+    except ImportError:
+        pass
+
+    _client = AsyncIOMotorClient(settings.mongodb_uri, **client_kwargs)
     _db = _client.png_monitor
+
     # Indexes
     await _db.business_records.create_index("record_id", unique=True)
     await _db.business_records.create_index([("company_name", "text"), ("raw_text", "text")])
