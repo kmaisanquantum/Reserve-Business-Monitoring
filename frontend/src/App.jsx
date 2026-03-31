@@ -79,6 +79,6 @@ export default function App() {
 const styles = {
   app:    { minHeight:'100vh', background:'#0A0E1A', color:'#F1F5F9' },
   main:   { padding:'0 0 24px', display:'flex', flexDirection:'column', gap:12 },
-  row2:   { display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, padding:'0 24px' },
-  footer: { padding:'16px 24px', textAlign:'center', fontSize:10, color:'#4B5563', borderTop:'1px solid #1E293B' },
+  row2:   { display:'grid', gridTemplateColumns:'repeat(var(--row-cols, 2), 1fr)', gap:12, padding:'0 var(--side-padding, 24px)' },
+  footer: { padding:'16px var(--side-padding, 24px)', textAlign:'center', fontSize:10, color:'#4B5563', borderTop:'1px solid #1E293B' },
 };

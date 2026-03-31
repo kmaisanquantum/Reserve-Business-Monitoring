@@ -6,7 +6,6 @@ export default function NavBar({ onRefreshAll, lastUpdated }) {
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery]           = useState('');
   const [results, setResults]       = useState([]);
-  const [searching, setSearching]   = useState(false);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -19,21 +18,18 @@ export default function NavBar({ onRefreshAll, lastUpdated }) {
     const q = e.target.value;
     setQuery(q);
     if (q.length < 2) { setResults([]); return; }
-    setSearching(true);
     try {
       const data = await api.search(q);
       setResults(data.slice(0, 8));
     } catch (_) {
       setResults([]);
-    } finally {
-      setSearching(false);
     }
   }, []);
 
   return (
-    <header style={styles.bar}>
+    <header style={styles.bar} className="nav-container">
       {/* Brand */}
-      <div style={styles.brand}>
+      <div style={styles.brand} className="nav-brand">
         <div style={styles.logoBox}><Eye size={16} color="#F59E0B" /></div>
         <div>
           <div style={styles.title}>PNG Business Transparency Monitor</div>
@@ -42,7 +38,7 @@ export default function NavBar({ onRefreshAll, lastUpdated }) {
       </div>
 
       {/* Search */}
-      <div style={styles.searchWrap}>
+      <div style={styles.searchWrap} className="nav-search">
         <Search size={13} color="#6B7280" style={styles.searchIcon} />
         <input
           style={styles.searchInput}
@@ -72,7 +68,7 @@ export default function NavBar({ onRefreshAll, lastUpdated }) {
       </div>
 
       {/* Right controls */}
-      <div style={styles.right}>
+      <div style={styles.right} className="nav-right">
         <div style={styles.liveDot}><span style={styles.dot} />Live</div>
         <span style={styles.updated}>{lastUpdated}</span>
         <button style={styles.refreshBtn} onClick={handleRefresh} disabled={refreshing}>
@@ -85,12 +81,12 @@ export default function NavBar({ onRefreshAll, lastUpdated }) {
 }
 
 const styles = {
-  bar:          { display:'flex', alignItems:'center', gap:16, padding:'12px 24px', background:'#111827', borderBottom:'1px solid #1E293B', position:'sticky', top:0, zIndex:100 },
+  bar:          { display:'flex', alignItems:'center', gap:16, padding:'12px var(--side-padding, 24px)', background:'#111827', borderBottom:'1px solid #1E293B', position:'sticky', top:0, zIndex:100, flexWrap: 'wrap' },
   brand:        { display:'flex', alignItems:'center', gap:10, flexShrink:0 },
   logoBox:      { width:32, height:32, borderRadius:8, background:'#F59E0B22', border:'1px solid #F59E0B44', display:'flex', alignItems:'center', justifyContent:'center' },
   title:        { fontSize:14, fontWeight:700, color:'#F1F5F9', lineHeight:1.2 },
   sub:          { fontSize:11, color:'#6B7280' },
-  searchWrap:   { flex:1, maxWidth:360, position:'relative' },
+  searchWrap:   { flex:1, maxWidth:360, position:'relative', minWidth: 200 },
   searchIcon:   { position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' },
   searchInput:  { width:'100%', background:'#1A2235', border:'1px solid #1E293B', borderRadius:8, padding:'7px 32px 7px 32px', color:'#F1F5F9', fontSize:13, outline:'none' },
   clearBtn:     { position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', display:'flex' },

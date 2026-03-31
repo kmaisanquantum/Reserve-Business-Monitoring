@@ -1,5 +1,51 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+:root {
+  --stat-cols: 4;
+  --row-cols: 2;
+  --side-padding: 24px;
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --stat-cols: 2;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --stat-cols: 1;
+    --row-cols: 1;
+    --side-padding: 16px;
+  }
+
+  .nav-container {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    height: auto !important;
+    gap: 12px !important;
+    padding: 12px var(--side-padding) !important;
+  }
+
+  .nav-brand {
+    width: 100% !important;
+  }
+
+  .nav-search {
+    width: 100% !important;
+    max-width: none !important;
+    order: 3;
+  }
+
+  .nav-right {
+    width: 100% !important;
+    justify-content: space-between !important;
+    order: 2;
+    border-top: 1px solid #1E293B;
+    padding-top: 8px;
+  }
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: #0A0E1A;

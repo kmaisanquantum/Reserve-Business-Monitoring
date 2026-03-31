@@ -40,7 +40,7 @@ export default function StatCards({ stats, loading }) {
 }
 
 const styles = {
-  grid:    { display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, padding:'16px 24px 0' },
+  grid:    { display:'grid', gridTemplateColumns:'repeat(var(--stat-cols, 4), 1fr)', gap:12, padding:'16px var(--side-padding, 24px) 0' },
   card:    { background:'#1A2235', border:'1px solid #1E293B', borderRadius:12, padding:'14px 16px', display:'flex', flexDirection:'column', gap:6 },
   top:     { display:'flex', alignItems:'center', justifyContent:'space-between' },
   label:   { fontSize:11, fontWeight:500, color:'#94A3B8' },
