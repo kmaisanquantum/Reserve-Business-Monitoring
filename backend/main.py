@@ -2,6 +2,7 @@
 PNG Business Transparency Monitor — FastAPI Backend
 ====================================================
 Routes:
+  GET  /                           API root info
   GET  /health                    liveness probe for Render.com
   GET  /api/stats                 dashboard KPI cards
   GET  /api/provinces             heatmap province data
@@ -172,6 +173,15 @@ def _time_ago(dt: datetime) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes
 # ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/")
+async def root():
+    return {
+        "app": "PNG Business Transparency Monitor API",
+        "version": "1.0.0",
+        "status": "online",
+        "mode": "degraded" if not DB_CONNECTED else "normal"
+    }
 
 @app.get("/health")
 async def health():
