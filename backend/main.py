@@ -12,6 +12,7 @@ Routes:
   POST /api/scrape/trigger        manually kick off a scrape
   GET  /api/scrape/status         last run info
   GET  /api/search?q=             full-text company search
+  GET  /api/debug/connection       diagnostic connection info
 """
 from __future__ import annotations
 
@@ -38,6 +39,8 @@ settings = get_settings()
 limiter = Limiter(key_func=get_remote_address)
 orchestrator = ScraperOrchestrator()
 scheduler = AsyncIOScheduler()
+
+DB_CONNECTED = False
 
 # ── Static province layout (screen-space coords for the SVG heatmap) ─────────
 PROVINCE_LAYOUT = [
@@ -66,8 +69,14 @@ PROVINCE_LAYOUT = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
-    logger.info("MongoDB connected.")
+    global DB_CONNECTED
+    try:
+        await init_db()
+        DB_CONNECTED = True
+        logger.info("MongoDB connected.")
+    except Exception as exc:
+        logger.error(f"CRITICAL: MongoDB connection failed during startup: {exc}")
+        logger.info("Application starting in degraded mode (no database).")
 
     scheduler.add_job(
         _run_scrape,
@@ -81,7 +90,8 @@ async def lifespan(app: FastAPI):
     yield
 
     scheduler.shutdown(wait=False)
-    await close_db()
+    if DB_CONNECTED:
+        await close_db()
     logger.info("Shutdown complete.")
 
 
@@ -106,6 +116,10 @@ app.add_middleware(
 
 async def _run_scrape():
     """Background scrape — persists results to MongoDB."""
+    if not DB_CONNECTED:
+        logger.warning("Scrape skipped: No database connection.")
+        return
+
     logger.info("Scheduled scrape starting …")
     db = get_db()
     result = orchestrator.run()
@@ -161,11 +175,48 @@ def _time_ago(dt: datetime) -> str:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "ts": datetime.utcnow().isoformat()}
+    return {
+        "status": "ok" if DB_CONNECTED else "degraded",
+        "ts": datetime.utcnow().isoformat(),
+        "database": "connected" if DB_CONNECTED else "disconnected"
+    }
 
+@app.get("/api/debug/connection")
+async def debug_connection():
+    # Redact credentials for display
+    uri = settings.mongodb_uri
+    if "@" in uri:
+        try:
+            protocol, rest = uri.split("://", 1)
+            creds, host_part = rest.split("@", 1)
+            redacted_uri = f"{protocol}://****:****@{host_part}"
+        except Exception:
+            redacted_uri = "URI format unexpected"
+    else:
+        redacted_uri = uri
+
+    return {
+        "connected": DB_CONNECTED,
+        "redacted_uri": redacted_uri,
+        "env_uri_length": len(uri),
+        "hint": "Check for typos in cluster ID or extra spaces in Render dashboard."
+    }
 
 @app.get("/api/stats")
 async def get_stats():
+    if not DB_CONNECTED:
+        return {
+            "foreign_entities":    1284,
+            "ral_violations":      47,
+            "fronting_clusters":   18,
+            "local_businesses":    3941,
+            "foreign_delta_pct":   12.0,
+            "ral_delta_pct":       31.0,
+            "fronting_delta_pct":  8.0,
+            "local_delta_pct":     -2.0,
+            "note": "Database disconnected, showing fallback demo data."
+        }
+
     db = get_db()
     now = datetime.utcnow()
     month_ago = now - timedelta(days=30)
@@ -218,6 +269,9 @@ async def get_stats():
 
 @app.get("/api/provinces")
 async def get_provinces():
+    if not DB_CONNECTED:
+        return [{**p, "total": 10, "violations": 2} for p in PROVINCE_LAYOUT]
+
     db = get_db()
     result = []
     for p in PROVINCE_LAYOUT:
@@ -231,6 +285,9 @@ async def get_provinces():
 
 @app.get("/api/clusters")
 async def get_clusters():
+    if not DB_CONNECTED:
+        return []
+
     db = get_db()
     clusters = await db.fronting_clusters.find(
         {}, {"_id": 0}
@@ -243,6 +300,9 @@ async def get_trends(
     category: str = Query(default="all"),
     limit: int = Query(default=20, le=50),
 ):
+    if not DB_CONNECTED:
+        return []
+
     db = get_db()
     query: dict = {}
     if category != "all":
@@ -283,6 +343,9 @@ async def get_trends(
 
 @app.get("/api/alerts")
 async def get_alerts(include_dismissed: bool = Query(default=False)):
+    if not DB_CONNECTED:
+        return []
+
     db = get_db()
     query = {} if include_dismissed else {"dismissed": {"$ne": True}}
     alerts = await db.reg_alerts.find(query, {"_id": 1, "company": 1, "cert_number": 1,
@@ -296,6 +359,9 @@ async def get_alerts(include_dismissed: bool = Query(default=False)):
 
 @app.post("/api/alerts/{alert_id}/dismiss")
 async def dismiss_alert(alert_id: str):
+    if not DB_CONNECTED:
+        raise HTTPException(status_code=503, detail="Database disconnected")
+
     from bson import ObjectId
     db = get_db()
     try:
@@ -311,6 +377,9 @@ async def dismiss_alert(alert_id: str):
 @app.post("/api/scrape/trigger")
 async def trigger_scrape():
     """Manually trigger a scrape run (runs in the background)."""
+    if not DB_CONNECTED:
+        raise HTTPException(status_code=503, detail="Database disconnected")
+
     import asyncio
     asyncio.create_task(_run_scrape())
     return {"ok": True, "message": "Scrape triggered — check /api/scrape/status"}
@@ -318,6 +387,9 @@ async def trigger_scrape():
 
 @app.get("/api/scrape/status")
 async def scrape_status():
+    if not DB_CONNECTED:
+        return ScrapeStatus(running=False, errors=["Database disconnected"])
+
     db = get_db()
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     records_today = await db.business_records.count_documents(
@@ -332,6 +404,9 @@ async def scrape_status():
 
 @app.get("/api/search")
 async def search(q: str = Query(min_length=2, max_length=100)):
+    if not DB_CONNECTED:
+        return []
+
     db = get_db()
     results = await db.business_records.find(
         {"$text": {"$search": q}},
