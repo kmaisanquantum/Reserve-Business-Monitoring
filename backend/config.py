@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from functools import lru_cache
 
 
@@ -7,6 +8,13 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-key-change-in-production"
     cors_origins: str = "http://localhost:3000"
     scrape_interval_minutes: int = 60
+
+    @field_validator("mongodb_uri", mode="before")
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
     @property
     def cors_origins_list(self) -> list[str]:
