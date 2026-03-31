@@ -2,7 +2,7 @@
 PNG Business Transparency Monitor — FastAPI Backend
 ====================================================
 Routes:
-  GET  /                           API root info
+  GET  /                           API root info (Backend ID)
   GET  /health                    liveness probe for Render.com
   GET  /api/stats                 dashboard KPI cards
   GET  /api/provinces             heatmap province data
@@ -13,17 +13,19 @@ Routes:
   POST /api/scrape/trigger        manually kick off a scrape
   GET  /api/scrape/status         last run info
   GET  /api/search?q=             full-text company search
-  GET  /api/debug/connection       diagnostic connection info
+  GET  /api/debug/connection       detailed diagnostic connection info
 """
 from __future__ import annotations
 
 import logging
+import socket
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -42,6 +44,7 @@ orchestrator = ScraperOrchestrator()
 scheduler = AsyncIOScheduler()
 
 DB_CONNECTED = False
+DB_ERROR = None
 
 # ── Static province layout (screen-space coords for the SVG heatmap) ─────────
 PROVINCE_LAYOUT = [
@@ -70,12 +73,13 @@ PROVINCE_LAYOUT = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global DB_CONNECTED
+    global DB_CONNECTED, DB_ERROR
     try:
         await init_db()
         DB_CONNECTED = True
         logger.info("MongoDB connected.")
     except Exception as exc:
+        DB_ERROR = str(exc)
         logger.error(f"CRITICAL: MongoDB connection failed during startup: {exc}")
         logger.info("Application starting in degraded mode (no database).")
 
@@ -177,9 +181,10 @@ def _time_ago(dt: datetime) -> str:
 @app.get("/")
 async def root():
     return {
-        "app": "PNG Business Transparency Monitor API",
-        "version": "1.0.0",
+        "service": "PNG Business Transparency Monitor BACKEND API",
+        "notice": "If you are seeing this instead of the Dashboard UI, check your domain mapping in Render. This domain (rbm.dspng.tech) is currently hitting the Python API service.",
         "status": "online",
+        "database": "connected" if DB_CONNECTED else "error/disconnected",
         "mode": "degraded" if not DB_CONNECTED else "normal"
     }
 
@@ -193,23 +198,36 @@ async def health():
 
 @app.get("/api/debug/connection")
 async def debug_connection():
-    # Redact credentials for display
     uri = settings.mongodb_uri
+    redacted_uri = uri
+    hostname = "unknown"
+    dns_resolution = "not tested"
+
     if "@" in uri:
         try:
             protocol, rest = uri.split("://", 1)
             creds, host_part = rest.split("@", 1)
             redacted_uri = f"{protocol}://****:****@{host_part}"
+            hostname = host_part.split("/")[0].split("?")[0]
+
+            # Simple DNS check
+            try:
+                # For SRV records we often need to look for _mongodb._tcp.<hostname>
+                # But even resolving the base hostname is a good check
+                socket.gethostbyname(hostname.replace("cluster0.", ""))
+                dns_resolution = "success (base domain)"
+            except Exception as e:
+                dns_resolution = f"failed: {e}"
         except Exception:
             redacted_uri = "URI format unexpected"
-    else:
-        redacted_uri = uri
 
     return {
         "connected": DB_CONNECTED,
+        "error_message": DB_ERROR,
         "redacted_uri": redacted_uri,
-        "env_uri_length": len(uri),
-        "hint": "Check for typos in cluster ID or extra spaces in Render dashboard."
+        "extracted_hostname": hostname,
+        "dns_check": dns_resolution,
+        "hint": "The hostname 'cluster0.mongodb.net' is a placeholder. You MUST replace MONGODB_URI in Render Environment tab with your actual Atlas connection string (e.g., cluster0.abcde.mongodb.net)."
     }
 
 @app.get("/api/stats")
